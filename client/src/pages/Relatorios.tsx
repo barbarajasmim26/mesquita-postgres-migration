@@ -20,7 +20,7 @@ export default function Relatorios() {
 
   const chartData = MESES_CURTO.map((nome, idx) => {
     const mes = idx + 1;
-    const d = receita?.find((r) => Number(r.mes) === mes);
+    const d = Array.isArray(receita) ? receita.find((r) => Number(r.mes) === mes) : null;
     return {
       mes: nome,
       mesCompleto: MESES[idx],

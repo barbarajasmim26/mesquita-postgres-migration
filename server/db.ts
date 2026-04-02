@@ -235,37 +235,70 @@ export async function upsertPagamento(data: any) {
 // Dashboard
 export async function getDashboardStats() {
   const db = await getDb();
-  if (!db) return { total: 0, ativos: 0, receita: 0 };
+  if (!db) return { totalContratos: 0, contratosAtivos: 0, receitaMes: 0, vencendoEm30: 0 };
   
   const allContratos = await db.select().from(contratos);
-  const total = allContratos.length;
-  const ativos = allContratos.filter(c => c.status === 'ativo').length;
-  const receita = allContratos.reduce((sum, c) => {
-    const aluguel = typeof c.aluguel === 'string' ? parseFloat(c.aluguel) : (c.aluguel as any);
-    return sum + (aluguel || 0);
+  const totalContratos = allContratos.length;
+  const contratosAtivos = allContratos.filter(c => c.status === 'ativo').length;
+  
+  // Receita do mês atual (baseado em pagamentos pagos)
+  const hoje = new Date();
+  const mesAtual = hoje.getMonth() + 1;
+  const anoAtual = hoje.getFullYear();
+  
+  const pagamentosMes = await db.select().from(pagamentos).where(
+    and(
+      eq(pagamentos.ano, anoAtual),
+      eq(pagamentos.mes, mesAtual),
+      eq(pagamentos.status, 'pago')
+    )
+  );
+  
+  const receitaMes = pagamentosMes.reduce((sum, p) => {
+    const valor = typeof p.valorPago === 'string' ? parseFloat(p.valorPago) : Number(p.valorPago || 0);
+    return sum + valor;
   }, 0);
 
-  return { total, ativos, receita };
+  const vencendo = await getContratosVencendoEm30();
+
+  return { 
+    totalContratos, 
+    contratosAtivos, 
+    receitaMes, 
+    vencendoEm30: vencendo.length 
+  };
 }
 
 export async function getReceitaPorMes(ano: number) {
   const db = await getDb();
   if (!db) return [];
   
-  const pagos = await db.select().from(pagamentos).where(
-    and(
-      eq(pagamentos.ano, ano),
-      eq(pagamentos.status, 'pago')
-    )
+  const pgs = await db.select().from(pagamentos).where(
+    eq(pagamentos.ano, ano)
   );
   
-  const meses = Array(12).fill(0);
-  pagos.forEach(p => {
-    const valor = typeof p.valorPago === 'string' ? parseFloat(p.valorPago) : (p.valorPago as any);
-    meses[p.mes - 1] += valor || 0;
+  // O frontend espera um array de objetos: { mes: number, total: number, qtdPago: number, qtdPendente: number }
+  const result = Array.from({ length: 12 }, (_, i) => ({
+    mes: i + 1,
+    total: 0,
+    qtdPago: 0,
+    qtdPendente: 0
+  }));
+
+  pgs.forEach(p => {
+    const mesIdx = p.mes - 1;
+    if (mesIdx >= 0 && mesIdx < 12) {
+      const valor = typeof p.valorPago === 'string' ? parseFloat(p.valorPago) : Number(p.valorPago || 0);
+      if (p.status === 'pago') {
+        result[mesIdx].total += valor;
+        result[mesIdx].qtdPago += 1;
+      } else {
+        result[mesIdx].qtdPendente += 1;
+      }
+    }
   });
   
-  return meses;
+  return result;
 }
 
 // Tenant Templates
