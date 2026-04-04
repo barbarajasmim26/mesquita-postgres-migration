@@ -104,18 +104,29 @@ export default function ContratoDetalhe() {
     onError: (err) => toast.error("Erro ao atualizar: " + err.message),
   });
 
+  const updateStatusMutation = trpc.contratos.update.useMutation({
+    onSuccess: () => {
+      toast.success("Status atualizado!");
+      utils.contratos.byId.invalidate({ id });
+      utils.contratos.list.invalidate();
+      utils.contratos.vencendoEm30.invalidate();
+    },
+    onError: () => toast.error("Erro ao atualizar status"),
+  });
+
   const openEditModal = () => {
-    if (!contrato) return;
+    if (!data?.contrato) return;
+    const c = data.contrato;
     setEditForm({
-      nomeInquilino: contrato.nomeInquilino || "",
-      casa: contrato.casa || "",
-      aluguel: String(contrato.aluguel || ""),
-      caucao: String(contrato.caucao || ""),
-      diaPagamento: contrato.diaPagamento || 1,
-      dataEntrada: contrato.dataEntrada ? new Date(contrato.dataEntrada).toISOString().split("T")[0] : "",
-      dataSaida: contrato.dataSaida ? new Date(contrato.dataSaida).toISOString().split("T")[0] : "",
-      telefone: contrato.telefone || "",
-      observacoes: contrato.observacoes || ""
+      nomeInquilino: c.nomeInquilino || "",
+      casa: c.casa || "",
+      aluguel: String(c.aluguel || ""),
+      caucao: String(c.caucao || ""),
+      diaPagamento: c.diaPagamento || 1,
+      dataEntrada: c.dataEntrada ? new Date(c.dataEntrada).toISOString().split("T")[0] : "",
+      dataSaida: c.dataSaida ? new Date(c.dataSaida).toISOString().split("T")[0] : "",
+      telefone: c.telefone || "",
+      observacoes: c.observacoes || ""
     });
     setShowModalEdit(true);
   };
@@ -141,7 +152,6 @@ export default function ContratoDetalhe() {
     reader.readAsDataURL(file);
   };
 
-  // Gerar todos os anos desde a data de entrada até 2 anos no futuro
   const gerarAnosDisponiveis = () => {
     const anos: number[] = [];
     const hoje = new Date();
@@ -153,26 +163,21 @@ export default function ContratoDetalhe() {
         anos.push(ano);
       }
     } else {
-      // Se não houver data de entrada, mostrar ano atual e próximo
       anos.push(anoAtual, anoAtual + 1, anoAtual + 2);
     }
     
-    return anos.sort((a, b) => b - a); // Ordenar decrescente
+    return Array.from(new Set(anos)).sort((a, b) => b - a);
   };
 
-  // Agrupar pagamentos por ano
-  const pagamentosPorAno: Record<number, Record<number, NonNullable<typeof pagamentos>[number]>> = {};
+  const pagamentosPorAno: Record<number, Record<number, any>> = {};
   pagamentos?.forEach((p) => {
     if (!pagamentosPorAno[p.ano]) pagamentosPorAno[p.ano] = {};
     pagamentosPorAno[p.ano][p.mes] = p;
   });
 
-  // Garantir que todos os anos disponíveis existem no objeto
   const anosDisponiveis = gerarAnosDisponiveis();
   anosDisponiveis.forEach((ano) => {
-    if (!pagamentosPorAno[ano]) {
-      pagamentosPorAno[ano] = {};
-    }
+    if (!pagamentosPorAno[ano]) pagamentosPorAno[ano] = {};
   });
 
   if (isLoading) {
@@ -202,7 +207,6 @@ export default function ContratoDetalhe() {
   const contratoVencido = contrato.status === "encerrado" || (diasParaVencer !== null && diasParaVencer < 0);
   const vencendoBreve = diasParaVencer !== null && diasParaVencer >= 0 && diasParaVencer <= 30;
 
-  // Calcular sugestão de data de renovação quando os dados estiverem disponíveis
   const sugestaoRenovacao = (() => {
     if (!data?.contrato) return "";
     const base = data.contrato.dataSaida ? new Date(data.contrato.dataSaida) : new Date();
@@ -411,7 +415,7 @@ export default function ContratoDetalhe() {
             <p className="text-red-500 text-xs mt-1">
               Entre em contato com o inquilino para renovar ou encerrar o contrato.
             </p>
-              <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 mt-3">
               <button
                 onClick={openEditModal}
                 className="flex-1 bg-white border-2 border-border text-foreground px-4 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
@@ -420,11 +424,13 @@ export default function ContratoDetalhe() {
                 Editar Dados
               </button>
               <button
-                onClick={() => setShowModalRenovar(true)}              className="inline-flex items-center gap-1.5 bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-colors shadow-sm"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              Renovar Contrato
-            </button>
+                onClick={() => setShowModalRenovar(true)}
+                className="inline-flex items-center gap-1.5 bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-colors shadow-sm"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Renovar Contrato
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -478,6 +484,14 @@ export default function ContratoDetalhe() {
                       </button>
                     )}
                   </div>
+                )}
+                {!contratoVencido && (
+                  <button
+                    onClick={openEditModal}
+                    className="text-xs bg-white border border-border text-muted-foreground px-2 py-0.5 rounded-full font-semibold hover:bg-muted/50 transition-colors"
+                  >
+                    Editar
+                  </button>
                 )}
                 {vencendoBreve && !contratoVencido && (
                   <span className="text-sm bg-amber-100 text-amber-700 px-2.5 py-0.5 rounded-full font-bold animate-pulse">
@@ -542,7 +556,6 @@ export default function ContratoDetalhe() {
           <p className="text-xs text-muted-foreground mt-1">Clique em qualquer mês para alterar o status do pagamento</p>
         </CardHeader>
         <CardContent className="px-5 pb-5">
-          {/* Nota: Os pagamentos podem ser alterados independentemente do status do contrato (ativo/inativo) */}
           {Object.keys(pagamentosPorAno).length === 0 ? (
             <p className="text-muted-foreground text-sm text-center py-6">Nenhum pagamento registrado</p>
           ) : (
