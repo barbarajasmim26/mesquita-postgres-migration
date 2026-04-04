@@ -140,3 +140,47 @@ export const rentalPeriods = pgTable("rental_periods", {
 
 export type RentalPeriod = typeof rentalPeriods.$inferSelect;
 export type InsertRentalPeriod = typeof rentalPeriods.$inferInsert;
+
+/**
+ * Dados de Inquilino para Recibos (novo)
+ */
+export const dadosInquilinoRecibo = pgTable("dados_inquilino_recibo", {
+  id: serial("id").primaryKey(),
+  contratoId: integer("contratoId").notNull().unique(),
+  nomeInquilino: text("nomeInquilino").notNull(),
+  nacionalidade: text("nacionalidade"),
+  estadoCivil: text("estadoCivil"),
+  profissao: text("profissao"),
+  rg: varchar("rg", { length: 50 }),
+  orgaoExpedidor: varchar("orgaoExpedidor", { length: 50 }),
+  cpf: varchar("cpf", { length: 20 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+/**
+ * Histórico de Recibos (novo)
+ */
+export const recibosHistorico = pgTable("recibos_historico", {
+  id: serial("id").primaryKey(),
+  contratoId: integer("contratoId"),
+  nomeInquilino: text("nomeInquilino").notNull(),
+  nacionalidade: text("nacionalidade"),
+  estadoCivil: text("estadoCivil"),
+  profissao: text("profissao"),
+  rg: varchar("rg", { length: 50 }),
+  orgaoExpedidor: varchar("orgaoExpedidor", { length: 50 }),
+  cpf: varchar("cpf", { length: 20 }),
+  tipoRecibo: varchar("tipoRecibo", { length: 20 }).notNull(), // 'aluguel' | 'caucao'
+  valor: decimal("valor", { precision: 10, scale: 2 }).notNull(),
+  formaPagamento: text("formaPagamento"),
+  incluirPagoPor: varchar("incluirPagoPor", { length: 5 }).notNull(), // 'sim' | 'nao'
+  nomePagador: text("nomePagador"),
+  mesReferencia: integer("mesReferencia").notNull(),
+  anoReferencia: integer("anoReferencia").notNull(),
+  enderecoImovel: text("enderecoImovel"),
+  cidade: text("cidade"),
+  dataRecibo: timestamp("dataRecibo").notNull(),
+  nomeLocadora: text("nomeLocadora"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});

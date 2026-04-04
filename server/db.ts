@@ -3,7 +3,8 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { 
   InsertUser, users, propriedades, contratos, pagamentos,
-  tenantTemplates, tenantDocuments, formerTenants, rentalPeriods 
+  tenantTemplates, tenantDocuments, formerTenants, rentalPeriods,
+  dadosInquilinoRecibo, recibosHistorico
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -345,10 +346,61 @@ export async function createFormerTenant(data: any) {
 
 // Placeholder functions for compatibility
 export async function gerarMeses2026() { return []; }
-export async function getDadosInquilinoRecibo() { return null; }
-export async function saveDadosInquilinoRecibo() { return null; }
-export async function createReciboHistorico() { return null; }
-export async function listRecibosHistorico() { return []; }
-export async function saveArquivo() { return null; }
-export async function getArquivosByContrato() { return []; }
-export async function deleteArquivo() { return false; }
+
+export async function getDadosInquilinoRecibo(contratoId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(dadosInquilinoRecibo).where(eq(dadosInquilinoRecibo.contratoId, contratoId));
+  return result[0] || null;
+}
+
+export async function saveDadosInquilinoRecibo(data: any) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const result = await db.insert(dadosInquilinoRecibo).values(data).onConflictDoUpdate({
+    target: [dadosInquilinoRecibo.contratoId],
+    set: {
+      ...data,
+      updatedAt: new Date(),
+    },
+  }).returning();
+  
+  return result[0]?.id;
+}
+
+export async function createReciboHistorico(data: any) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.insert(recibosHistorico).values(data).returning();
+  return result[0]?.id;
+}
+
+export async function listRecibosHistorico(filters: any = {}) {
+  const db = await getDb();
+  if (!db) return [];
+  let query = db.select().from(recibosHistorico);
+  if (filters.contratoId) {
+    query = query.where(eq(recibosHistorico.contratoId, filters.contratoId));
+  }
+  return query.orderBy(desc(recibosHistorico.createdAt));
+}
+
+// Arquivos
+export async function saveArquivo(data: any) {
+  // Nota: a tabela 'arquivos' não parece estar no schema.ts original, 
+  // mas está sendo usada no routers.ts. Vou assumir que ela deveria estar lá ou 
+  // usar tenantDocuments se for compatível. Por enquanto, manter como placeholder 
+  // ou implementar se necessário.
+  return null;
+}
+
+export async function getArquivosByContrato(contratoId: number) {
+  // Placeholder para compatibilidade
+  return [];
+}
+
+export async function deleteArquivo(id: number) {
+  // Placeholder para compatibilidade
+  return false;
+}

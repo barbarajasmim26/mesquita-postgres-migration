@@ -28,6 +28,18 @@ export default function ContratoDetalhe() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showModalRenovar, setShowModalRenovar] = useState(false);
   const [novaDataRenovacao, setNovaDataRenovacao] = useState("");
+  const [showModalEdit, setShowModalEdit] = useState(false);
+  const [editForm, setEditForm] = useState({
+    nomeInquilino: "",
+    casa: "",
+    aluguel: "",
+    caucao: "",
+    diaPagamento: 1,
+    dataEntrada: "",
+    dataSaida: "",
+    telefone: "",
+    observacoes: ""
+  });
   const [expandedYears, setExpandedYears] = useState<Set<number>>(() => {
     const hoje = new Date();
     return new Set([hoje.getFullYear()]);
@@ -81,15 +93,32 @@ export default function ContratoDetalhe() {
     onError: (err) => toast.error("Erro ao renovar: " + err.message),
   });
 
-  const updateStatusMutation = trpc.contratos.update.useMutation({
+  const updateContratoMutation = trpc.contratos.update.useMutation({
     onSuccess: () => {
-      toast.success("Status atualizado!");
+      toast.success("Contrato atualizado com sucesso!");
       utils.contratos.byId.invalidate({ id });
       utils.contratos.list.invalidate();
       utils.contratos.vencendoEm30.invalidate();
+      setShowModalEdit(false);
     },
-    onError: () => toast.error("Erro ao atualizar status"),
+    onError: (err) => toast.error("Erro ao atualizar: " + err.message),
   });
+
+  const openEditModal = () => {
+    if (!contrato) return;
+    setEditForm({
+      nomeInquilino: contrato.nomeInquilino || "",
+      casa: contrato.casa || "",
+      aluguel: String(contrato.aluguel || ""),
+      caucao: String(contrato.caucao || ""),
+      diaPagamento: contrato.diaPagamento || 1,
+      dataEntrada: contrato.dataEntrada ? new Date(contrato.dataEntrada).toISOString().split("T")[0] : "",
+      dataSaida: contrato.dataSaida ? new Date(contrato.dataSaida).toISOString().split("T")[0] : "",
+      telefone: contrato.telefone || "",
+      observacoes: contrato.observacoes || ""
+    });
+    setShowModalEdit(true);
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -234,6 +263,129 @@ export default function ContratoDetalhe() {
         </div>
       )}
 
+      {/* Modal de edição */}
+      {showModalEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)" }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 relative max-h-[90vh] overflow-y-auto">
+            <button onClick={() => setShowModalEdit(false)} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center">
+              <X className="w-4 h-4 text-gray-600" />
+            </button>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: "oklch(0.50 0.22 255)" }}>
+                <FileText className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-foreground">Editar Contrato</h2>
+                <p className="text-sm text-muted-foreground">Corrija os dados do inquilino e valores</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold mb-1">Nome do Inquilino</label>
+                <input
+                  type="text"
+                  value={editForm.nomeInquilino}
+                  onChange={(e) => setEditForm({ ...editForm, nomeInquilino: e.target.value })}
+                  className="w-full px-4 py-2 rounded-xl border-2 border-border focus:border-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold mb-1">Casa / Apto</label>
+                <input
+                  type="text"
+                  value={editForm.casa}
+                  onChange={(e) => setEditForm({ ...editForm, casa: e.target.value })}
+                  className="w-full px-4 py-2 rounded-xl border-2 border-border focus:border-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold mb-1">Telefone</label>
+                <input
+                  type="text"
+                  value={editForm.telefone}
+                  onChange={(e) => setEditForm({ ...editForm, telefone: e.target.value })}
+                  className="w-full px-4 py-2 rounded-xl border-2 border-border focus:border-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold mb-1">Valor Aluguel (R$)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editForm.aluguel}
+                  onChange={(e) => setEditForm({ ...editForm, aluguel: e.target.value })}
+                  className="w-full px-4 py-2 rounded-xl border-2 border-border focus:border-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold mb-1">Valor Caução (R$)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editForm.caucao}
+                  onChange={(e) => setEditForm({ ...editForm, caucao: e.target.value })}
+                  className="w-full px-4 py-2 rounded-xl border-2 border-border focus:border-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold mb-1">Dia de Pagamento</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={editForm.diaPagamento}
+                  onChange={(e) => setEditForm({ ...editForm, diaPagamento: Number(e.target.value) })}
+                  className="w-full px-4 py-2 rounded-xl border-2 border-border focus:border-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold mb-1">Data de Entrada</label>
+                <input
+                  type="date"
+                  value={editForm.dataEntrada}
+                  onChange={(e) => setEditForm({ ...editForm, dataEntrada: e.target.value })}
+                  className="w-full px-4 py-2 rounded-xl border-2 border-border focus:border-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold mb-1">Data de Saída (Vencimento)</label>
+                <input
+                  type="date"
+                  value={editForm.dataSaida}
+                  onChange={(e) => setEditForm({ ...editForm, dataSaida: e.target.value })}
+                  className="w-full px-4 py-2 rounded-xl border-2 border-border focus:border-primary focus:outline-none"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold mb-1">Observações</label>
+                <textarea
+                  value={editForm.observacoes}
+                  onChange={(e) => setEditForm({ ...editForm, observacoes: e.target.value })}
+                  rows={3}
+                  className="w-full px-4 py-2 rounded-xl border-2 border-border focus:border-primary focus:outline-none resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setShowModalEdit(false)} className="flex-1 px-4 py-3 rounded-xl border-2 border-border text-sm font-semibold hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button
+                onClick={() => updateContratoMutation.mutate({ id, ...editForm })}
+                disabled={updateContratoMutation.isPending}
+                className="flex-1 px-4 py-3 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 disabled:opacity-50"
+                style={{ background: "oklch(0.50 0.22 255)" }}
+              >
+                {updateContratoMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                {updateContratoMutation.isPending ? "Salvando..." : "Salvar Alterações"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Breadcrumb */}
       <div className="flex items-center gap-2">
         <Link href="/contratos" className="flex items-center gap-1.5 text-muted-foreground hover:text-primary text-sm font-medium transition-colors">
@@ -259,11 +411,16 @@ export default function ContratoDetalhe() {
             <p className="text-red-500 text-xs mt-1">
               Entre em contato com o inquilino para renovar ou encerrar o contrato.
             </p>
-          </div>
-          <div className="flex-shrink-0">
-            <button
-              onClick={() => setShowModalRenovar(true)}
-              className="inline-flex items-center gap-1.5 bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-colors shadow-sm"
+              <div className="flex items-center gap-2">
+              <button
+                onClick={openEditModal}
+                className="flex-1 bg-white border-2 border-border text-foreground px-4 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
+              >
+                <FileText className="w-4 h-4 text-primary" />
+                Editar Dados
+              </button>
+              <button
+                onClick={() => setShowModalRenovar(true)}              className="inline-flex items-center gap-1.5 bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-colors shadow-sm"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               Renovar Contrato

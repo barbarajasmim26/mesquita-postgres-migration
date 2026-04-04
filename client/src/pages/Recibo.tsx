@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
-import { Printer, Receipt, RotateCcw, Save } from "lucide-react";
+import { Printer, Receipt, RotateCcw, Save, Trash2, FileText, Download } from "lucide-react";
 import { toast } from "sonner";
 
 const LOGO_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663491336634/HYxBNRCcMAFfUrRuSsmFNE/logo_mesquita_a2807a4a.png";
@@ -287,20 +287,20 @@ export default function Recibo() {
     nomeLocadora: form.nomeLocadora,
   }), [contratoSelecionadoId, form, valorNum]);
 
-  const handleSalvarDados = async () => {
+  const handleSalvarPerfil = () => {
     if (contratoSelecionadoId === "") {
-      toast.error("Selecione um inquilino para salvar os dados dele.");
+      toast.error("Selecione um inquilino primeiro.");
       return;
     }
-    await salvarDadosInquilino.mutateAsync({
+    salvarDadosInquilino.mutate({
       contratoId: Number(contratoSelecionadoId),
       nomeInquilino: form.nomeInquilino,
-      nacionalidade: form.nacionalidade,
-      estadoCivil: form.estadoCivil,
-      profissao: form.profissao,
-      rg: form.rg,
-      orgaoExpedidor: form.orgaoExpedidor,
-      cpf: form.cpf,
+      nacionalidade: form.nacionalidade || null,
+      estadoCivil: form.estadoCivil || null,
+      profissao: form.profissao || null,
+      rg: form.rg || null,
+      orgaoExpedidor: form.orgaoExpedidor || null,
+      cpf: form.cpf || null,
     });
   };
 
@@ -383,7 +383,7 @@ export default function Recibo() {
               <RotateCcw className="w-4 h-4" />
               Limpar
             </button>
-            <button onClick={handleSalvarDados} className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border text-sm font-bold hover:bg-muted/50" disabled={salvarDadosInquilino.isPending}>
+            <button onClick={handleSalvarPerfil} className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border text-sm font-bold hover:bg-muted/50" disabled={salvarDadosInquilino.isPending}>
               <Save className="w-4 h-4" />
               Salvar dados do inquilino
             </button>
