@@ -10,6 +10,7 @@ import {
   getAllPropriedades,
   getArquivosByContrato,
   getContratoById,
+  getContratoByIdComPropriedade,
   getContratosVencendoEm30,
   getDashboardStats,
   createReciboHistorico,
@@ -96,7 +97,7 @@ export const appRouter = router({
     byId: publicProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
-        const result = await getContratoById(input.id);
+        const result = await db.getContratoByIdComPropriedade(input.id);
         if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Contrato não encontrado" });
         return result;
       }),

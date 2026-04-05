@@ -448,3 +448,22 @@ export async function deleteArquivo(id: number) {
   await db.delete(tenantDocuments).where(eq(tenantDocuments.id, id));
   return true;
 }
+
+export async function getContratoByIdComPropriedade(id: number) {
+  const database = await getDb();
+  if (!database) return null;
+  
+  const { eq } = await import('drizzle-orm');
+  
+  const result = await database
+    .select({
+      contrato: contratos,
+      propriedade: propriedades,
+    })
+    .from(contratos)
+    .leftJoin(propriedades, eq(contratos.propriedadeId, propriedades.id))
+    .where(eq(contratos.id, id))
+    .limit(1);
+  
+  return result.length > 0 ? result[0] : null;
+}
