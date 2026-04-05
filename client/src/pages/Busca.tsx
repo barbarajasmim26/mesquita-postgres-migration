@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
-import { Search, Building2, Home, ChevronRight, FileText } from "lucide-react";
+import { Search, Building2, Home, ChevronRight, FileText, Calendar, DollarSign } from "lucide-react";
 import StatusBadge from "@/components/StatusBadge";
 
 function formatBRL(v: string | number | null) {
@@ -10,7 +10,13 @@ function formatBRL(v: string | number | null) {
 }
 function formatDate(d: Date | string | null) {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("pt-BR");
+  try {
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return "—";
+    return date.toLocaleDateString("pt-BR");
+  } catch (e) {
+    return "—";
+  }
 }
 
 export default function Busca() {
@@ -104,7 +110,11 @@ export default function Busca() {
                 {resultados.length} resultado(s) para "{debouncedQuery}"
               </p>
               <div className="space-y-2">
-                {resultados.map(({ contrato, propriedade }) => {
+                {resultados.map((item: any) => {
+                  const contrato = item?.contrato;
+                  const propriedade = item?.propriedade;
+                  if (!contrato) return null;
+
                   const dias = contrato.dataSaida
                     ? Math.ceil((new Date(contrato.dataSaida).getTime() - Date.now()) / 86400000)
                     : null;
@@ -117,9 +127,9 @@ export default function Busca() {
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-bold text-foreground">{contrato.nomeInquilino}</span>
+                                <span className="font-bold text-foreground">{contrato.nomeInquilino || "Sem nome"}</span>
                                 <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">
-                                  Casa {contrato.casa}
+                                  Casa {contrato.casa || "—"}
                                 </span>
                                 <StatusBadge status={contrato.status} />
                                 {vencendo && (
@@ -130,7 +140,7 @@ export default function Busca() {
                               </div>
                               <div className="flex items-center gap-1.5 mt-1">
                                 <Building2 className="w-3 h-3 text-muted-foreground" />
-                                <span className="text-xs text-muted-foreground">{propriedade?.endereco}</span>
+                                <span className="text-xs text-muted-foreground">{propriedade?.endereco || "Sem endereço"}</span>
                               </div>
                               <div className="flex items-center gap-4 mt-1.5 text-xs text-muted-foreground flex-wrap">
                                 <span>Aluguel: <b className="text-foreground">{formatBRL(contrato.aluguel)}</b></span>

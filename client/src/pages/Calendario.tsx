@@ -38,13 +38,13 @@ export default function Calendario() {
     setAno(novoAno);
   }
 
-  const pagsFiltrados = pagamentos?.filter((p) =>
+  const pagsFiltrados = (pagamentos ?? []).filter((p: any) =>
     propFiltro ? p.propriedade?.id === propFiltro : true
-  ) ?? [];
+  );
 
   // Agrupar por propriedade
-  const porPropriedade: Record<string, typeof pagsFiltrados> = {};
-  pagsFiltrados.forEach((p) => {
+  const porPropriedade: Record<string, any[]> = {};
+  pagsFiltrados.forEach((p: any) => {
     const key = p.propriedade?.nome ?? "Sem endereço";
     if (!porPropriedade[key]) porPropriedade[key] = [];
     porPropriedade[key].push(p);
@@ -52,10 +52,10 @@ export default function Calendario() {
 
   // Estatísticas
   const total = pagsFiltrados.length;
-  const pagos = pagsFiltrados.filter((p) => p.pagamento.status === "pago").length;
-  const caucao = pagsFiltrados.filter((p) => p.pagamento.status === "caucao").length;
-  const pendente = pagsFiltrados.filter((p) => p.pagamento.status === "pendente").length;
-  const atrasado = pagsFiltrados.filter((p) => p.pagamento.status === "atrasado").length;
+  const pagos = pagsFiltrados.filter((p: any) => p.pagamento?.status === "pago").length;
+  const caucao = pagsFiltrados.filter((p: any) => p.pagamento?.status === "caucao").length;
+  const pendente = pagsFiltrados.filter((p: any) => p.pagamento?.status === "pendente").length;
+  const atrasado = pagsFiltrados.filter((p: any) => p.pagamento?.status === "atrasado").length;
 
   return (
     <div className="space-y-5">
@@ -121,7 +121,7 @@ export default function Calendario() {
             className="px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
           >
             <option value="">Todos os endereços</option>
-            {propriedades?.map((p) => (
+            {(propriedades ?? []).map((p) => (
               <option key={p.id} value={p.id}>{p.nome}</option>
             ))}
           </select>
@@ -182,7 +182,11 @@ export default function Calendario() {
               <div className="space-y-2">
                 {pags
                   .sort((a, b) => (a.contrato?.nomeInquilino ?? "").localeCompare(b.contrato?.nomeInquilino ?? ""))
-                  .map(({ pagamento, contrato }) => {
+                  .map((item: any) => {
+                    const pagamento = item?.pagamento;
+                    const contrato = item?.contrato;
+                    if (!pagamento) return null;
+
                     const st = pagamento.status as StatusPag;
                     const cfg = statusConfig[st] ?? statusConfig.pendente;
                     return (
@@ -190,10 +194,10 @@ export default function Calendario() {
                         <a className="flex items-center justify-between gap-3 p-2.5 rounded-xl hover:bg-muted/50 transition-colors cursor-pointer">
                           <div className="flex items-center gap-2 min-w-0">
                             <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold flex-shrink-0">
-                              {contrato?.casa}
+                              {contrato?.casa || "—"}
                             </span>
                             <span className="text-sm font-semibold text-foreground truncate">
-                              {contrato?.nomeInquilino}
+                              {contrato?.nomeInquilino || "Sem nome"}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">

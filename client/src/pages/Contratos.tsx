@@ -107,7 +107,12 @@ export default function Contratos() {
         <div>Nenhum contrato encontrado</div>
       ) : (
         <div className="space-y-3">
-          {listaContratos.map(({ contrato, propriedade }) => {
+          {listaContratos.map((item) => {
+            const contrato = item?.contrato;
+            const propriedade = item?.propriedade;
+            
+            if (!contrato) return null;
+            
             const dias = diasParaVencer(contrato.dataSaida);
 
             return (
@@ -117,15 +122,15 @@ export default function Contratos() {
 
                     <div className="flex justify-between">
                       <div>
-                        <p>{contrato.nomeInquilino}</p>
-                        <p>Casa {contrato.casa}</p>
-                        <p>{propriedade?.nome}</p>
+                        <p className="font-bold">{contrato.nomeInquilino || "Sem nome"}</p>
+                        <p className="text-sm text-muted-foreground">Casa {contrato.casa || "—"}</p>
+                        <p className="text-sm text-muted-foreground">{propriedade?.nome || "Sem endereço"}</p>
                       </div>
 
-                      <div>
-                        <p>{formatBRL(contrato.aluguel)}</p>
-                        <p>{formatDate(contrato.dataSaida)}</p>
-                        {dias !== null && <p>{dias} dias</p>}
+                      <div className="text-right">
+                        <p className="font-bold">{formatBRL(contrato.aluguel)}</p>
+                        <p className="text-sm text-muted-foreground">{formatDate(contrato.dataSaida)}</p>
+                        {dias !== null && <p className={`text-xs font-semibold ${dias <= 30 ? "text-red-500" : "text-muted-foreground"}`}>{dias} dias para vencer</p>}
                       </div>
                     </div>
 

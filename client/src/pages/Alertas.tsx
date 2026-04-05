@@ -148,7 +148,9 @@ export default function Alertas() {
   const { data: todosContratos, refetch: refetchTodos } = trpc.contratos.list.useQuery({ status: "encerrado" });
 
   // Contratos vencidos = encerrados OU com dataSaida no passado
-  const vencidos = todosContratos?.filter(({ contrato }) => {
+  const vencidos = todosContratos?.filter((item) => {
+    const contrato = item?.contrato;
+    if (!contrato) return false;
     if (contrato.status === "encerrado") return true;
     if (contrato.dataSaida) {
       return new Date(contrato.dataSaida).getTime() < Date.now();
@@ -191,7 +193,11 @@ export default function Alertas() {
           </div>
           <p className="text-xs text-red-500 mb-3">Estes contratos já passaram da data de saída. Clique em <b>Renovar</b> para definir uma nova data de vencimento.</p>
           <div className="space-y-2">
-            {vencidos.map(({ contrato, propriedade }) => {
+            {vencidos.map((item) => {
+              const contrato = item?.contrato;
+              const propriedade = item?.propriedade;
+              if (!contrato) return null;
+              
               const diasVencido = contrato.dataSaida
                 ? Math.abs(Math.ceil((new Date(contrato.dataSaida).getTime() - Date.now()) / 86400000))
                 : null;
@@ -200,11 +206,11 @@ export default function Alertas() {
                   <AlertOctagon className="w-5 h-5 text-red-400 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-foreground">{contrato.nomeInquilino}</span>
-                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">Casa {contrato.casa}</span>
+                      <span className="font-bold text-foreground">{contrato.nomeInquilino || "Sem nome"}</span>
+                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">Casa {contrato.casa || "—"}</span>
                     </div>
                     <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground flex-wrap">
-                      <span>{propriedade?.nome}</span>
+                      <span>{propriedade?.nome || "Sem endereço"}</span>
                       <span>Venceu em: <b className="text-red-600">{formatDate(contrato.dataSaida)}</b></span>
                       {diasVencido !== null && (
                         <span className="text-red-500 font-semibold">Há {diasVencido} dia(s)</span>
@@ -212,12 +218,11 @@ export default function Alertas() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    {/* Botão de renovar — clicável e funcional */}
                     <button
                       onClick={() => setContratoRenovando({
                         id: contrato.id,
-                        nomeInquilino: contrato.nomeInquilino,
-                        casa: contrato.casa,
+                        nomeInquilino: contrato.nomeInquilino || "Sem nome",
+                        casa: contrato.casa || "—",
                         dataSaida: contrato.dataSaida,
                       })}
                       className="flex items-center gap-1.5 text-xs bg-green-500 hover:bg-green-600 text-white border border-green-600 px-3 py-1.5 rounded-lg font-bold transition-colors shadow-sm"
@@ -226,7 +231,7 @@ export default function Alertas() {
                       Renovar
                     </button>
                     <Link href={`/contratos/${contrato.id}`} className="flex items-center">
-                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                      <ChevronRight className="w-4 h-4 text-muted-foreground cursor-pointer" />
                     </Link>
                   </div>
                 </div>

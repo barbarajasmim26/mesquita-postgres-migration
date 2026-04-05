@@ -15,11 +15,11 @@ import {
   DollarSign,
   Home,
 } from "lucide-react";
-import { toast } from "sonner";
 
 export default function Dashboard() {
   const { data: stats, isLoading: statsLoading } = trpc.dashboard.stats.useQuery();
-  const { data: vencendo } = trpc.contratos.vencendoEm30.useQuery();
+  const { data: vencendoRaw } = trpc.contratos.vencendoEm30.useQuery();
+  const vencendo = Array.isArray(vencendoRaw) ? vencendoRaw : [];
 
   const totalContratos = stats?.totalContratos ?? 0;
   const ativosCount = stats?.contratosAtivos ?? 0;
@@ -43,7 +43,7 @@ export default function Dashboard() {
       icon: AlertOctagon,
       cor: "bg-red-500",
       href: "/alertas",
-      badge: `${vencendo?.length ?? 0} avisos`,
+      badge: `${vencendo.length} avisos`,
       badgeBg: "bg-red-100 text-red-700",
     },
     {

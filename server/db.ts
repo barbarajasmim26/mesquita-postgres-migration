@@ -134,7 +134,13 @@ export async function getAllContratos(filters: any = {}) {
   const db = await getDb();
   if (!db) return [];
   
-  let query = db.select().from(contratos);
+  let query = db
+    .select({
+      contrato: contratos,
+      propriedade: propriedades,
+    })
+    .from(contratos)
+    .leftJoin(propriedades, eq(contratos.propriedadeId, propriedades.id));
   
   if (filters.propriedadeId) {
     query = query.where(eq(contratos.propriedadeId, filters.propriedadeId));
@@ -184,13 +190,20 @@ export async function getContratosVencendoEm30() {
   const hoje = new Date();
   const em30Dias = new Date(hoje.getTime() + 30 * 24 * 60 * 60 * 1000);
   
-  return db.select().from(contratos).where(
-    and(
-      eq(contratos.status, 'ativo'),
-      gte(contratos.dataSaida, hoje),
-      lte(contratos.dataSaida, em30Dias)
-    )
-  );
+  return db
+    .select({
+      contrato: contratos,
+      propriedade: propriedades,
+    })
+    .from(contratos)
+    .leftJoin(propriedades, eq(contratos.propriedadeId, propriedades.id))
+    .where(
+      and(
+        eq(contratos.status, 'ativo'),
+        gte(contratos.dataSaida, hoje),
+        lte(contratos.dataSaida, em30Dias)
+      )
+    );
 }
 
 export async function renovarContrato(id: number, novaDataSaida: Date) {

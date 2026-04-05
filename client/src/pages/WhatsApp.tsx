@@ -79,17 +79,17 @@ function formatarData(dateStr: string | null | undefined): string {
   if (!dateStr) return "—";
   try {
     const d = new Date(dateStr + "T12:00:00");
+    if (isNaN(d.getTime())) return "—";
     return d.toLocaleDateString("pt-BR");
   } catch {
-    return dateStr;
+    return "—";
   }
 }
 
 export default function WhatsApp() {
-  const { data: contratos = [] } = trpc.contratos.list.useQuery({});
-  const { data: propriedades = [] } = trpc.propriedades.list.useQuery();
+  const { data: contratosRaw = [] } = trpc.contratos.list.useQuery({});
+  const contratos = Array.isArray(contratosRaw) ? contratosRaw : [];
 
-  // Pegar contratoId da URL se vier do botão do detalhe
   const urlParams = new URLSearchParams(window.location.search);
   const contratoIdFromUrl = urlParams.get("contratoId") ?? "";
 
@@ -103,13 +103,12 @@ export default function WhatsApp() {
   const [editando, setEditando] = useState(false);
 
   const contratoItem = useMemo(
-    () => contratos.find((c) => String(c.contrato.id) === contratoId),
+    () => contratos.find((c: any) => String(c.contrato?.id) === contratoId),
     [contratos, contratoId]
   );
   const contrato = contratoItem?.contrato;
   const propriedade = contratoItem?.propriedade;
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const dadosContrato: DadosContrato = useMemo(() => ({
     nome: contrato?.nomeInquilino ?? "Inquilino",
     casa: contrato?.casa ?? "—",
@@ -130,7 +129,7 @@ export default function WhatsApp() {
 
   function handleContratoChange(id: string) {
     setContratoId(id);
-    const c = contratos.find((x) => String(x.contrato.id) === id);
+    const c = contratos.find((x: any) => String(x.contrato?.id) === id);
     if (c?.contrato?.telefone) setTelefone(c.contrato.telefone);
     setEditando(false);
   }
@@ -162,11 +161,10 @@ export default function WhatsApp() {
     toast.success("Mensagem copiada para a área de transferência!");
   }
 
-  const contratosAtivos = contratos.filter((c) => c.contrato.status === "ativo");
+  const contratosAtivos = contratos.filter((c: any) => c.contrato?.status === "ativo");
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
-      {/* Cabeçalho */}
       <div className="flex items-center gap-3">
         <div className="w-12 h-12 rounded-2xl bg-green-500 flex items-center justify-center text-white text-2xl shadow-lg">
           📱
@@ -178,9 +176,7 @@ export default function WhatsApp() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Coluna esquerda: configurações */}
         <div className="space-y-4">
-          {/* Selecionar inquilino */}
           <Card className="border-2 border-blue-100 shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
@@ -195,12 +191,12 @@ export default function WhatsApp() {
                     <SelectValue placeholder="Selecione um inquilino..." />
                   </SelectTrigger>
                   <SelectContent>
-              {contratosAtivos.map((c) => {
-              const prop = c.propriedade;
-              return (
-                <SelectItem key={c.contrato.id} value={String(c.contrato.id)}>
-                  {c.contrato.nomeInquilino} — Casa {c.contrato.casa}
-                  {prop ? ` (${prop.nome})` : ""}
+                    {contratosAtivos.map((c: any) => {
+                      const prop = c.propriedade;
+                      return (
+                        <SelectItem key={c.contrato?.id} value={String(c.contrato?.id)}>
+                          {c.contrato?.nomeInquilino} — Casa {c.contrato?.casa}
+                          {prop ? ` (${prop.nome})` : ""}
                         </SelectItem>
                       );
                     })}
@@ -210,11 +206,11 @@ export default function WhatsApp() {
 
               {contrato && (
                 <div className="bg-blue-50 rounded-lg p-3 text-sm space-y-1">
-                  <p><span className="font-medium">Casa:</span> {contrato.casa}</p>
-                  <p><span className="font-medium">Endereço:</span> {propriedade?.endereco}</p>
-                  <p><span className="font-medium">Aluguel:</span> R$ {Number(contrato.aluguel).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</p>
-                  <p><span className="font-medium">Vencimento:</span> Dia {contrato.diaPagamento}</p>
-                  <p><span className="font-medium">Contrato até:</span> {formatarData(contrato.dataSaida ? String(contrato.dataSaida) : null)}</p>
+                  <p><span className="font-medium">Casa:</span> {contrato.casa || "—"}</p>
+                  <p><span className="font-medium">Endereço:</span> {propriedade?.endereco || "—"}</p>
+                  <p><span className="font-medium">Aluguel:</span> R$ {Number(contrato.aluguel || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</p>
+                  <p><span className="font-medium">Vencimento:</span> Dia {contrato.diaPagamento || "—"}</p>
+                  <p><span className="font-medium">Contrato até:</span> {formatarData(contrato.dataSaida)}</p>
                 </div>
               )}
 
@@ -228,12 +224,10 @@ export default function WhatsApp() {
                   value={telefone}
                   onChange={(e) => setTelefone(e.target.value)}
                 />
-                <p className="text-xs text-gray-400 mt-1">Salvo automaticamente quando disponível no contrato</p>
               </div>
             </CardContent>
           </Card>
 
-          {/* Modelo de mensagem */}
           <Card className="border-2 border-orange-100 shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
@@ -254,39 +248,45 @@ export default function WhatsApp() {
                   >
                     <span className="text-lg">{modelo.emoji}</span>
                     <span>{modelo.label}</span>
-                    {modeloKey === key && (
-                      <Badge className="ml-auto bg-orange-500 text-white text-xs">Selecionado</Badge>
-                    )}
                   </button>
                 ))}
               </div>
 
-              {/* Mês/Ano para cobrança e recibo */}
-              {(modeloKey === "cobranca" || modeloKey === "recibo") && (
-                <div className="grid grid-cols-2 gap-2 pt-1">
+              {modeloKey === "personalizada" ? (
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Mensagem</Label>
+                  <Textarea
+                    className="mt-1 h-32"
+                    placeholder="Digite sua mensagem aqui..."
+                    value={mensagemPersonalizada}
+                    onChange={(e) => setMensagemPersonalizada(e.target.value)}
+                  />
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs text-gray-600">Mês de referência</Label>
-                    <Select value={mes} onValueChange={(v) => { setMes(v); setEditando(false); }}>
-                      <SelectTrigger className="mt-1 h-8 text-sm">
+                    <Label className="text-sm font-medium text-gray-700">Mês Ref.</Label>
+                    <Select value={mes} onValueChange={setMes}>
+                      <SelectTrigger className="mt-1">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         {MESES.map((m, i) => (
-                          <SelectItem key={i + 1} value={String(i + 1)}>{m}</SelectItem>
+                          <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                   <div>
-                    <Label className="text-xs text-gray-600">Ano</Label>
-                    <Select value={ano} onValueChange={(v) => { setAno(v); setEditando(false); }}>
-                      <SelectTrigger className="mt-1 h-8 text-sm">
+                    <Label className="text-sm font-medium text-gray-700">Ano Ref.</Label>
+                    <Select value={ano} onValueChange={setAno}>
+                      <SelectTrigger className="mt-1">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="2025">2025</SelectItem>
-                        <SelectItem value="2026">2026</SelectItem>
-                        <SelectItem value="2027">2027</SelectItem>
+                        {[anoAtual - 1, anoAtual, anoAtual + 1].map((a) => (
+                          <SelectItem key={a} value={String(a)}>{a}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -296,133 +296,45 @@ export default function WhatsApp() {
           </Card>
         </div>
 
-        {/* Coluna direita: preview e envio */}
         <div className="space-y-4">
-          <Card className="border-2 border-green-100 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <span className="text-green-500">💬</span> Preview da Mensagem
-                {editando && (
-                  <Badge className="ml-auto bg-purple-500 text-white text-xs">Editando</Badge>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {/* Balão estilo WhatsApp */}
-              {!editando && modeloKey !== "personalizada" ? (
-                <div className="bg-[#dcf8c6] rounded-2xl rounded-tr-sm p-4 text-sm text-gray-800 whitespace-pre-wrap shadow-sm min-h-[160px] font-sans leading-relaxed border border-green-200">
-                  {mensagemGerada}
+          <Card className="border-2 border-green-100 shadow-md h-full flex flex-col">
+            <CardHeader className="pb-3 border-b">
+              <CardTitle className="text-base flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-green-500">👀</span> Prévia da Mensagem
                 </div>
-              ) : (
-                <Textarea
-                  className="min-h-[200px] text-sm font-sans leading-relaxed resize-none"
-                  value={editando ? mensagemEditada : mensagemPersonalizada}
-                  onChange={(e) => {
-                    if (editando) setMensagemEditada(e.target.value);
-                    else setMensagemPersonalizada(e.target.value);
-                  }}
-                  placeholder={modeloKey === "personalizada" ? "Digite sua mensagem personalizada aqui..." : ""}
-                />
-              )}
-
-              {/* Botões de ação da mensagem */}
-              <div className="flex gap-2">
                 {!editando && modeloKey !== "personalizada" && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 text-purple-600 border-purple-200 hover:bg-purple-50"
-                    onClick={handleEditar}
-                  >
+                  <Button variant="ghost" size="sm" onClick={handleEditar} className="text-xs h-7">
                     ✏️ Editar
                   </Button>
                 )}
-                {editando && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 text-gray-600"
-                    onClick={() => setEditando(false)}
-                  >
-                    ↩️ Restaurar
-                  </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1 pt-4 flex flex-col">
+              <div className="flex-1 bg-gray-50 rounded-xl p-4 border border-gray-200 font-sans text-sm whitespace-pre-wrap text-gray-800">
+                {editando ? (
+                  <Textarea
+                    className="w-full h-full bg-transparent border-none focus:ring-0 p-0 resize-none text-sm"
+                    value={mensagemEditada}
+                    onChange={(e) => setMensagemEditada(e.target.value)}
+                  />
+                ) : (
+                  mensagemGerada || "Selecione um inquilino e um modelo para gerar a prévia..."
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 text-blue-600 border-blue-200 hover:bg-blue-50"
-                  onClick={handleCopiar}
-                >
-                  📋 Copiar
-                </Button>
               </div>
 
-              {/* Botão principal de envio */}
-              <Button
-                className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 text-base shadow-md"
-                onClick={handleEnviar}
-              >
-                <span className="mr-2 text-lg">📱</span>
-                Abrir no WhatsApp
-              </Button>
-
-              <p className="text-xs text-gray-400 text-center">
-                Abre o WhatsApp Web (ou app) com a mensagem pronta para enviar
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Dicas */}
-          <Card className="border-2 border-gray-100 bg-gray-50">
-            <CardContent className="pt-4 pb-3">
-              <p className="text-xs font-semibold text-gray-600 mb-2">💡 Como usar:</p>
-              <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside">
-                <li>Selecione o inquilino na lista</li>
-                <li>Informe o número do WhatsApp com DDD</li>
-                <li>Escolha o modelo de mensagem</li>
-                <li>Edite se necessário e clique em "Abrir no WhatsApp"</li>
-                <li>O WhatsApp abrirá com a mensagem pronta — só clicar em Enviar!</li>
-              </ol>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <Button variant="outline" onClick={handleCopiar} className="gap-2">
+                  📋 Copiar
+                </Button>
+                <Button onClick={handleEnviar} className="bg-green-600 hover:bg-green-700 gap-2">
+                  📱 Enviar WhatsApp
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
       </div>
-
-      {/* Lista rápida de inquilinos ativos */}
-      <Card className="border-2 border-gray-100">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <span>📋</span> Acesso Rápido — Inquilinos Ativos ({contratosAtivos.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {contratosAtivos.map((c) => {
-              const prop = c.propriedade;
-              return (
-                <button
-                  key={c.contrato.id}
-                  onClick={() => handleContratoChange(String(c.contrato.id))}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-left text-sm transition-all ${
-                    contratoId === String(c.contrato.id)
-                      ? "border-green-400 bg-green-50 shadow-sm"
-                      : "border-gray-200 bg-white hover:border-green-300 hover:bg-green-50/50"
-                  }`}
-                >
-                  <span className="text-green-500 text-base">👤</span>
-                  <div className="min-w-0">
-                    <p className="font-medium text-gray-800 truncate">{c.contrato.nomeInquilino}</p>
-                    <p className="text-xs text-gray-500 truncate">Casa {c.contrato.casa} — {prop?.nome ?? "—"}</p>
-                  </div>
-                  {c.contrato.telefone && (
-                    <span className="ml-auto text-green-500 text-xs shrink-0">📱</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

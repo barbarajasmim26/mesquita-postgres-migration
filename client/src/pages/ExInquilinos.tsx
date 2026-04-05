@@ -11,7 +11,13 @@ function formatBRL(v: string | number | null) {
 
 function formatDate(d: Date | string | null) {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("pt-BR");
+  try {
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return "—";
+    return date.toLocaleDateString("pt-BR");
+  } catch (e) {
+    return "—";
+  }
 }
 
 export default function ExInquilinos() {
@@ -102,17 +108,19 @@ export default function ExInquilinos() {
       ) : (
         <div className="grid gap-4">
           {listaExInquilinos.map((item: any) => {
-            const contrato = item.contrato || item;
+            const contrato = item?.contrato || item;
+            if (!contrato) return null;
+            
             return (
             <Card key={contrato.id} className="border border-border hover:shadow-md transition-shadow">
               <CardContent className="p-5">
                 <div className="flex items-start justify-between flex-wrap gap-3">
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-lg font-bold text-foreground">{contrato.nomeInquilino}</h3>
+                    <h3 className="text-lg font-bold text-foreground">{contrato.nomeInquilino || "Sem nome"}</h3>
                     <div className="flex items-center gap-3 mt-2 flex-wrap text-sm text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Building2 className="w-4 h-4" />
-                        Casa {contrato.casa}
+                        Casa {contrato.casa || "—"}
                       </span>
                       <span className="flex items-center gap-1">
                         <Calendar className="w-4 h-4" />
