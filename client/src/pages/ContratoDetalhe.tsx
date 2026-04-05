@@ -33,6 +33,7 @@ function formatDate(d: Date | string | null | undefined) {
 }
 
 export default function ContratoDetalhe() {
+  console.log("CARREGANDO VERSÃO BLINDADA 1.0.1");
   const params = useParams<{ id: string }>();
   const id = Number(params.id);
   const utils = trpc.useUtils();
