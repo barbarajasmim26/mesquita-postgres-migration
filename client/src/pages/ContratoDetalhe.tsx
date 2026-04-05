@@ -1,9 +1,9 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState } from "react";
 import { useParams, Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import {
   ArrowLeft, Building2, Calendar, DollarSign,
-  FileText, Upload, Download, Trash2, AlertOctagon, RefreshCw, X, Check, Receipt, MessageCircle, Edit3
+  FileText, Upload, Download, Trash2, AlertOctagon, RefreshCw, X, Check, Receipt, MessageCircle, Edit3, ChevronRight
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import StatusBadge from "@/components/StatusBadge";
@@ -12,15 +12,16 @@ import { toast } from "sonner";
 
 const MESES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
-function formatBRL(v: string | number | null) {
-  if (!v) return "—";
+function formatBRL(v: string | number | null | undefined) {
+  if (v === null || v === undefined) return "—";
   try {
     return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   } catch (e) {
     return "—";
   }
 }
-function formatDate(d: Date | string | null) {
+
+function formatDate(d: Date | string | null | undefined) {
   if (!d) return "—";
   try {
     const date = new Date(d);
@@ -36,6 +37,7 @@ export default function ContratoDetalhe() {
   const id = Number(params.id);
   const utils = trpc.useUtils();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
   const [showModalRenovar, setShowModalRenovar] = useState(false);
   const [novaDataRenovacao, setNovaDataRenovacao] = useState("");
   const [showModalEdit, setShowModalEdit] = useState(false);
@@ -119,8 +121,8 @@ export default function ContratoDetalhe() {
   });
 
   const openEditModal = () => {
-    if (!data?.contrato) return;
-    const c = data.contrato;
+    const c = data?.contrato;
+    if (!c) return;
     setEditForm({
       nomeInquilino: c.nomeInquilino || "",
       casa: c.casa || "",
@@ -156,9 +158,10 @@ export default function ContratoDetalhe() {
     const anos: number[] = [];
     const hoje = new Date();
     const anoAtual = hoje.getFullYear();
+    const dataEntrada = data?.contrato?.dataEntrada;
     
-    if (data?.contrato?.dataEntrada) {
-      const anoEntrada = new Date(data.contrato.dataEntrada).getFullYear();
+    if (dataEntrada) {
+      const anoEntrada = new Date(dataEntrada).getFullYear();
       for (let ano = Math.min(anoEntrada, anoAtual); ano <= anoAtual + 2; ano++) {
         anos.push(ano);
       }
@@ -182,7 +185,7 @@ export default function ContratoDetalhe() {
 
   if (isLoading) {
     return (
-      <div className="space-y-4 max-w-4xl">
+      <div className="space-y-4 max-w-4xl p-6">
         <div className="h-8 w-48 bg-muted rounded-xl animate-pulse" />
         <div className="h-48 bg-muted rounded-2xl animate-pulse" />
         <div className="h-64 bg-muted rounded-2xl animate-pulse" />
@@ -190,7 +193,10 @@ export default function ContratoDetalhe() {
     );
   }
 
-  if (!data?.contrato) {
+  const contrato = data?.contrato;
+  const propriedade = data?.propriedade;
+
+  if (!contrato) {
     return (
       <div className="text-center py-16">
         <p className="text-muted-foreground">Contrato não encontrado</p>
@@ -199,26 +205,25 @@ export default function ContratoDetalhe() {
     );
   }
 
-  const { contrato, propriedade } = data;
+  // PROTEÇÃO CRÍTICA CONTRA UNDEFINED EM DATAS
   const hojeTimestamp = Date.now();
-  
-  // PROTEÇÃO CRÍTICA: Cálculo de dias com verificação de dataSaida
-  const diasParaVencer = contrato?.dataSaida
-    ? Math.ceil((new Date(contrato.dataSaida).getTime() - hojeTimestamp) / 86400000)
+  const dataSaidaRaw = contrato?.dataSaida;
+  const diasParaVencer = dataSaidaRaw
+    ? Math.ceil((new Date(dataSaidaRaw).getTime() - hojeTimestamp) / 86400000)
     : null;
     
   const contratoVencido = contrato?.status === "encerrado" || (diasParaVencer !== null && diasParaVencer < 0);
   const vencendoBreve = diasParaVencer !== null && diasParaVencer >= 0 && diasParaVencer <= 30;
 
   const sugestaoRenovacao = (() => {
-    const base = contrato?.dataSaida ? new Date(contrato.dataSaida) : new Date();
+    const base = dataSaidaRaw ? new Date(dataSaidaRaw) : new Date();
     const s = new Date(base);
     s.setFullYear(s.getFullYear() + 1);
     return s.toISOString().split("T")[0];
   })();
 
   return (
-    <div className="space-y-5 max-w-4xl">
+    <div className="space-y-5 max-w-4xl p-4 sm:p-6">
       {/* Modal de renovação */}
       {showModalRenovar && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)" }}>
@@ -554,13 +559,5 @@ export default function ContratoDetalhe() {
         </div>
       </div>
     </div>
-  );
-}
-
-function ChevronRight({ className, ...props }: any) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
-      <path d="m9 18 6-6-6-6"/>
-    </svg>
   );
 }
