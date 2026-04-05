@@ -7,7 +7,13 @@ import { toast } from "sonner";
 
 function formatDate(d: Date | string | null) {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("pt-BR");
+  try {
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return "—";
+    return date.toLocaleDateString("pt-BR");
+  } catch (e) {
+    return "—";
+  }
 }
 
 function diasParaVencer(dataSaida: Date | string | null): number {

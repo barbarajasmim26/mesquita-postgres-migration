@@ -215,7 +215,19 @@ export async function getPagamentosByContrato(contratoId: number) {
 export async function getPagamentosByMes(mes: number, ano: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(pagamentos).where(and(eq(pagamentos.mes, mes), eq(pagamentos.ano, ano)));
+  
+  const results = await db
+    .select({
+      pagamento: pagamentos,
+      contrato: contratos,
+      propriedade: propriedades,
+    })
+    .from(pagamentos)
+    .innerJoin(contratos, eq(pagamentos.contratoId, contratos.id))
+    .innerJoin(propriedades, eq(contratos.propriedadeId, propriedades.id))
+    .where(and(eq(pagamentos.mes, mes), eq(pagamentos.ano, ano)));
+    
+  return results;
 }
 
 export async function upsertPagamento(data: any) {
