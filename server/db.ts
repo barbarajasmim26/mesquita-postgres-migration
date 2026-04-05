@@ -388,19 +388,38 @@ export async function listRecibosHistorico(filters: any = {}) {
 
 // Arquivos
 export async function saveArquivo(data: any) {
-  // Nota: a tabela 'arquivos' não parece estar no schema.ts original, 
-  // mas está sendo usada no routers.ts. Vou assumir que ela deveria estar lá ou 
-  // usar tenantDocuments se for compatível. Por enquanto, manter como placeholder 
-  // ou implementar se necessário.
-  return null;
+  const db = await getDb();
+  if (!db) return null;
+  
+  // Usando tenantDocuments como tabela de arquivos de contrato
+  const result = await db.insert(tenantDocuments).values({
+    templateId: data.contratoId, // Usando templateId para armazenar o contratoId
+    tipo: data.mimeType || 'application/pdf',
+    url: data.urlArquivo,
+    nomeArquivo: data.nomeArquivo,
+  }).returning();
+  
+  return result[0]?.id;
 }
 
 export async function getArquivosByContrato(contratoId: number) {
-  // Placeholder para compatibilidade
-  return [];
+  const db = await getDb();
+  if (!db) return [];
+  
+  const result = await db.select().from(tenantDocuments).where(eq(tenantDocuments.templateId, contratoId));
+  
+  return result.map(arq => ({
+    id: arq.id,
+    contratoId: arq.templateId,
+    nomeArquivo: arq.nomeArquivo,
+    urlArquivo: arq.url,
+    createdAt: arq.createdAt,
+  }));
 }
 
 export async function deleteArquivo(id: number) {
-  // Placeholder para compatibilidade
-  return false;
+  const db = await getDb();
+  if (!db) return false;
+  await db.delete(tenantDocuments).where(eq(tenantDocuments.id, id));
+  return true;
 }
