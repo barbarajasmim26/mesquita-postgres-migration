@@ -1,9 +1,9 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useParams, Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import {
   ArrowLeft, Building2, Calendar, DollarSign,
-  FileText, Upload, Download, Trash2, AlertOctagon, RefreshCw, X, Check, Receipt, MessageCircle
+  FileText, Upload, Download, Trash2, AlertOctagon, RefreshCw, X, Check, Receipt, MessageCircle, Edit3
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import StatusBadge from "@/components/StatusBadge";
@@ -14,7 +14,11 @@ const MESES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov"
 
 function formatBRL(v: string | number | null) {
   if (!v) return "—";
-  return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  try {
+    return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  } catch (e) {
+    return "—";
+  }
 }
 function formatDate(d: Date | string | null) {
   if (!d) return "—";
@@ -35,6 +39,7 @@ export default function ContratoDetalhe() {
   const [showModalRenovar, setShowModalRenovar] = useState(false);
   const [novaDataRenovacao, setNovaDataRenovacao] = useState("");
   const [showModalEdit, setShowModalEdit] = useState(false);
+  
   const [editForm, setEditForm] = useState({
     nomeInquilino: "",
     casa: "",
@@ -46,6 +51,7 @@ export default function ContratoDetalhe() {
     telefone: "",
     observacoes: ""
   });
+
   const [expandedYears, setExpandedYears] = useState<Set<number>>(() => {
     const hoje = new Date();
     return new Set([hoje.getFullYear()]);
@@ -62,8 +68,10 @@ export default function ContratoDetalhe() {
   };
 
   const { data, isLoading } = trpc.contratos.byId.useQuery({ id });
-  const { data: pagamentos } = trpc.pagamentos.byContrato.useQuery({ contratoId: id });
-  const { data: arquivos } = trpc.arquivos.byContrato.useQuery({ contratoId: id });
+  const { data: pagamentosRaw } = trpc.pagamentos.byContrato.useQuery({ contratoId: id });
+  const pagamentos = Array.isArray(pagamentosRaw) ? pagamentosRaw : [];
+  const { data: arquivosRaw } = trpc.arquivos.byContrato.useQuery({ contratoId: id });
+  const arquivos = Array.isArray(arquivosRaw) ? arquivosRaw : [];
 
   const uploadMutation = trpc.arquivos.getUploadUrl.useMutation({
     onSuccess: () => {
@@ -110,16 +118,6 @@ export default function ContratoDetalhe() {
     onError: (err) => toast.error("Erro ao atualizar: " + err.message),
   });
 
-  const updateStatusMutation = trpc.contratos.update.useMutation({
-    onSuccess: () => {
-      toast.success("Status atualizado!");
-      utils.contratos.byId.invalidate({ id });
-      utils.contratos.list.invalidate();
-      utils.contratos.vencendoEm30.invalidate();
-    },
-    onError: () => toast.error("Erro ao atualizar status"),
-  });
-
   const openEditModal = () => {
     if (!data?.contrato) return;
     const c = data.contrato;
@@ -140,10 +138,6 @@ export default function ContratoDetalhe() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("Arquivo muito grande (máx 10MB)");
-      return;
-    }
     const reader = new FileReader();
     reader.onload = async (ev) => {
       const base64 = (ev.target?.result as string).split(",")[1];
@@ -165,7 +159,7 @@ export default function ContratoDetalhe() {
     
     if (data?.contrato?.dataEntrada) {
       const anoEntrada = new Date(data.contrato.dataEntrada).getFullYear();
-      for (let ano = anoEntrada; ano <= anoAtual + 2; ano++) {
+      for (let ano = Math.min(anoEntrada, anoAtual); ano <= anoAtual + 2; ano++) {
         anos.push(ano);
       }
     } else {
@@ -176,7 +170,7 @@ export default function ContratoDetalhe() {
   };
 
   const pagamentosPorAno: Record<number, Record<number, any>> = {};
-  pagamentos?.forEach((p) => {
+  pagamentos.forEach((p) => {
     if (!pagamentosPorAno[p.ano]) pagamentosPorAno[p.ano] = {};
     pagamentosPorAno[p.ano][p.mes] = p;
   });
@@ -196,26 +190,28 @@ export default function ContratoDetalhe() {
     );
   }
 
-  if (!data) {
+  if (!data?.contrato) {
     return (
       <div className="text-center py-16">
         <p className="text-muted-foreground">Contrato não encontrado</p>
-        <Link href="/contratos" className="text-primary underline mt-2 block">Voltar</Link>
+        <Link href="/contratos" className="text-primary underline mt-2 block">Voltar para lista</Link>
       </div>
     );
   }
 
   const { contrato, propriedade } = data;
-  const hoje = Date.now();
-  const diasParaVencer = contrato.dataSaida
-    ? Math.ceil((new Date(contrato.dataSaida).getTime() - hoje) / 86400000)
+  const hojeTimestamp = Date.now();
+  
+  // PROTEÇÃO CRÍTICA: Cálculo de dias com verificação de dataSaida
+  const diasParaVencer = contrato?.dataSaida
+    ? Math.ceil((new Date(contrato.dataSaida).getTime() - hojeTimestamp) / 86400000)
     : null;
-  const contratoVencido = contrato.status === "encerrado" || (diasParaVencer !== null && diasParaVencer < 0);
+    
+  const contratoVencido = contrato?.status === "encerrado" || (diasParaVencer !== null && diasParaVencer < 0);
   const vencendoBreve = diasParaVencer !== null && diasParaVencer >= 0 && diasParaVencer <= 30;
 
   const sugestaoRenovacao = (() => {
-    if (!data?.contrato) return "";
-    const base = data.contrato.dataSaida ? new Date(data.contrato.dataSaida) : new Date();
+    const base = contrato?.dataSaida ? new Date(contrato.dataSaida) : new Date();
     const s = new Date(base);
     s.setFullYear(s.getFullYear() + 1);
     return s.toISOString().split("T")[0];
@@ -231,18 +227,18 @@ export default function ContratoDetalhe() {
               <X className="w-4 h-4 text-gray-600" />
             </button>
             <div className="flex items-center gap-3 mb-5">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: "oklch(0.50 0.22 255)" }}>
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-green-500">
                 <RefreshCw className="w-6 h-6 text-white" />
               </div>
               <div>
                 <h2 className="text-lg font-bold text-foreground">Renovar Contrato</h2>
-                <p className="text-sm text-muted-foreground">{contrato.nomeInquilino} — Casa {contrato.casa}</p>
+                <p className="text-sm text-muted-foreground">{contrato?.nomeInquilino || "Inquilino"} — Casa {contrato?.casa || "—"}</p>
               </div>
             </div>
             <div className="bg-gray-50 rounded-xl p-3 mb-5 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Data de saída atual:</span>
-                <span className="font-semibold text-red-600">{formatDate(contrato.dataSaida)}</span>
+                <span className="font-semibold text-red-600">{formatDate(contrato?.dataSaida)}</span>
               </div>
             </div>
             <div className="mb-5">
@@ -260,496 +256,311 @@ export default function ContratoDetalhe() {
                 Cancelar
               </button>
               <button
-                onClick={() => renovarMutation.mutate({ id, novaDataSaida: novaDataRenovacao })}
-                disabled={!novaDataRenovacao || renovarMutation.isPending}
-                className="flex-1 px-4 py-3 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 disabled:opacity-50"
-                style={{ background: "oklch(0.50 0.22 140)" }}
+                onClick={() => renovarMutation.mutate({ id, novaDataSaida: novaDataRenovacao || sugestaoRenovacao })}
+                disabled={renovarMutation.isPending}
+                className="flex-1 px-4 py-3 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 bg-green-600 disabled:opacity-50"
               >
                 {renovarMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                {renovarMutation.isPending ? "Salvando..." : "Confirmar Renovação"}
+                Confirmar
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal de edição */}
+      {/* Modal de Edição */}
       {showModalEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)" }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 relative max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto" style={{ background: "rgba(0,0,0,0.5)" }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 relative my-8">
             <button onClick={() => setShowModalEdit(false)} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center">
               <X className="w-4 h-4 text-gray-600" />
             </button>
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: "oklch(0.50 0.22 255)" }}>
-                <FileText className="w-6 h-6 text-white" />
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-blue-500">
+                <Edit3 className="w-6 h-6 text-white" />
               </div>
-              <div>
-                <h2 className="text-lg font-bold text-foreground">Editar Contrato</h2>
-                <p className="text-sm text-muted-foreground">Corrija os dados do inquilino e valores</p>
-              </div>
+              <h2 className="text-xl font-bold text-foreground">Editar Inquilino</h2>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              <div className="md:col-span-2">
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+              <div className="sm:col-span-2">
                 <label className="block text-sm font-semibold mb-1">Nome do Inquilino</label>
-                <input
-                  type="text"
-                  value={editForm.nomeInquilino}
-                  onChange={(e) => setEditForm({ ...editForm, nomeInquilino: e.target.value })}
-                  className="w-full px-4 py-2 rounded-xl border-2 border-border focus:border-primary focus:outline-none"
-                />
+                <input className="w-full px-3 py-2 border rounded-xl" value={editForm.nomeInquilino} onChange={e => setEditForm({...editForm, nomeInquilino: e.target.value})} />
               </div>
               <div>
-                <label className="block text-sm font-semibold mb-1">Casa / Apto</label>
-                <input
-                  type="text"
-                  value={editForm.casa}
-                  onChange={(e) => setEditForm({ ...editForm, casa: e.target.value })}
-                  className="w-full px-4 py-2 rounded-xl border-2 border-border focus:border-primary focus:outline-none"
-                />
+                <label className="block text-sm font-semibold mb-1">Casa</label>
+                <input className="w-full px-3 py-2 border rounded-xl" value={editForm.casa} onChange={e => setEditForm({...editForm, casa: e.target.value})} />
               </div>
               <div>
                 <label className="block text-sm font-semibold mb-1">Telefone</label>
-                <input
-                  type="text"
-                  value={editForm.telefone}
-                  onChange={(e) => setEditForm({ ...editForm, telefone: e.target.value })}
-                  className="w-full px-4 py-2 rounded-xl border-2 border-border focus:border-primary focus:outline-none"
-                />
+                <input className="w-full px-3 py-2 border rounded-xl" value={editForm.telefone} onChange={e => setEditForm({...editForm, telefone: e.target.value})} />
               </div>
               <div>
-                <label className="block text-sm font-semibold mb-1">Valor Aluguel (R$)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={editForm.aluguel}
-                  onChange={(e) => setEditForm({ ...editForm, aluguel: e.target.value })}
-                  className="w-full px-4 py-2 rounded-xl border-2 border-border focus:border-primary focus:outline-none"
-                />
+                <label className="block text-sm font-semibold mb-1">Aluguel (R$)</label>
+                <input type="number" className="w-full px-3 py-2 border rounded-xl" value={editForm.aluguel} onChange={e => setEditForm({...editForm, aluguel: e.target.value})} />
               </div>
               <div>
-                <label className="block text-sm font-semibold mb-1">Valor Caução (R$)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={editForm.caucao}
-                  onChange={(e) => setEditForm({ ...editForm, caucao: e.target.value })}
-                  className="w-full px-4 py-2 rounded-xl border-2 border-border focus:border-primary focus:outline-none"
-                />
+                <label className="block text-sm font-semibold mb-1">Caução (R$)</label>
+                <input type="number" className="w-full px-3 py-2 border rounded-xl" value={editForm.caucao} onChange={e => setEditForm({...editForm, caucao: e.target.value})} />
               </div>
               <div>
-                <label className="block text-sm font-semibold mb-1">Dia de Pagamento</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="31"
-                  value={editForm.diaPagamento}
-                  onChange={(e) => setEditForm({ ...editForm, diaPagamento: Number(e.target.value) })}
-                  className="w-full px-4 py-2 rounded-xl border-2 border-border focus:border-primary focus:outline-none"
-                />
+                <label className="block text-sm font-semibold mb-1">Dia Vencimento</label>
+                <input type="number" className="w-full px-3 py-2 border rounded-xl" value={editForm.diaPagamento} onChange={e => setEditForm({...editForm, diaPagamento: Number(e.target.value)})} />
               </div>
               <div>
-                <label className="block text-sm font-semibold mb-1">Data de Entrada</label>
-                <input
-                  type="date"
-                  value={editForm.dataEntrada}
-                  onChange={(e) => setEditForm({ ...editForm, dataEntrada: e.target.value })}
-                  className="w-full px-4 py-2 rounded-xl border-2 border-border focus:border-primary focus:outline-none"
-                />
+                <label className="block text-sm font-semibold mb-1">Data Entrada</label>
+                <input type="date" className="w-full px-3 py-2 border rounded-xl" value={editForm.dataEntrada} onChange={e => setEditForm({...editForm, dataEntrada: e.target.value})} />
               </div>
-              <div>
-                <label className="block text-sm font-semibold mb-1">Data de Saída (Vencimento)</label>
-                <input
-                  type="date"
-                  value={editForm.dataSaida}
-                  onChange={(e) => setEditForm({ ...editForm, dataSaida: e.target.value })}
-                  className="w-full px-4 py-2 rounded-xl border-2 border-border focus:border-primary focus:outline-none"
-                />
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-semibold mb-1">Data Saída (Vencimento Contrato)</label>
+                <input type="date" className="w-full px-3 py-2 border rounded-xl" value={editForm.dataSaida} onChange={e => setEditForm({...editForm, dataSaida: e.target.value})} />
               </div>
-              <div className="md:col-span-2">
+              <div className="sm:col-span-2">
                 <label className="block text-sm font-semibold mb-1">Observações</label>
-                <textarea
-                  value={editForm.observacoes}
-                  onChange={(e) => setEditForm({ ...editForm, observacoes: e.target.value })}
-                  rows={3}
-                  className="w-full px-4 py-2 rounded-xl border-2 border-border focus:border-primary focus:outline-none resize-none"
-                />
+                <textarea className="w-full px-3 py-2 border rounded-xl h-24" value={editForm.observacoes} onChange={e => setEditForm({...editForm, observacoes: e.target.value})} />
               </div>
             </div>
 
             <div className="flex gap-3">
-              <button onClick={() => setShowModalEdit(false)} className="flex-1 px-4 py-3 rounded-xl border-2 border-border text-sm font-semibold hover:bg-gray-50">
-                Cancelar
-              </button>
-              <button
-                onClick={() => updateContratoMutation.mutate({ id, ...editForm })}
+              <button onClick={() => setShowModalEdit(false)} className="flex-1 px-4 py-3 rounded-xl border-2 border-border font-semibold">Cancelar</button>
+              <button 
+                onClick={() => updateContratoMutation.mutate({ 
+                  id, 
+                  data: {
+                    ...editForm,
+                    aluguel: Number(editForm.aluguel),
+                    caucao: Number(editForm.caucao),
+                    dataEntrada: editForm.dataEntrada ? new Date(editForm.dataEntrada) : null,
+                    dataSaida: editForm.dataSaida ? new Date(editForm.dataSaida) : null,
+                  }
+                })}
                 disabled={updateContratoMutation.isPending}
-                className="flex-1 px-4 py-3 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 disabled:opacity-50"
-                style={{ background: "oklch(0.50 0.22 255)" }}
+                className="flex-1 px-4 py-3 rounded-xl bg-primary text-white font-bold disabled:opacity-50"
               >
-                {updateContratoMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                {updateContratoMutation.isPending ? "Salvando..." : "Salvar Alterações"}
+                Salvar Alterações
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2">
-        <Link href="/contratos" className="flex items-center gap-1.5 text-muted-foreground hover:text-primary text-sm font-medium transition-colors">
+      {/* Navegação e Título */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <Link href="/contratos">
+          <a className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft className="w-4 h-4" />
-            Contratos
+            Voltar para Contratos
+          </a>
         </Link>
-        <span className="text-muted-foreground">/</span>
-        <span className="text-foreground font-semibold text-sm">{contrato.nomeInquilino}</span>
+        <div className="flex items-center gap-2">
+          <button onClick={openEditModal} className="flex items-center gap-1.5 bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-blue-600 transition-colors">
+            <Edit3 className="w-4 h-4" />
+            Editar Dados
+          </button>
+          <Link href={`/recibo?contratoId=${id}`}>
+            <a className="flex items-center gap-1.5 bg-orange-500 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-orange-600 transition-colors">
+              <Receipt className="w-4 h-4" />
+              Gerar Recibo
+            </a>
+          </Link>
+        </div>
       </div>
 
-      {/* ⚠ Aviso de contrato vencido */}
+      {/* Alerta de Vencimento */}
       {contratoVencido && (
-        <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-4 flex items-start gap-3">
-          <AlertOctagon className="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <p className="font-bold text-red-700 text-base">⚠ Contrato Vencido!</p>
-            <p className="text-red-600 text-sm mt-0.5">
-              Este contrato venceu em <b>{formatDate(contrato.dataSaida)}</b>.
-              {diasParaVencer !== null && (
-                <span> Há <b>{Math.abs(diasParaVencer)} dia(s)</b> sem renovação.</span>
-              )}
-            </p>
-            <p className="text-red-500 text-xs mt-1">
-              Entre em contato com o inquilino para renovar ou encerrar o contrato.
-            </p>
-            <div className="flex items-center gap-2 mt-3">
-              <button
-                onClick={openEditModal}
-                className="flex-1 bg-white border-2 border-border text-foreground px-4 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors"
-              >
-                <FileText className="w-4 h-4 text-primary" />
-                Editar Dados
-              </button>
-              <button
-                onClick={() => setShowModalRenovar(true)}
-                className="inline-flex items-center gap-1.5 bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-colors shadow-sm"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                Renovar Contrato
-              </button>
+        <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-4 flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+              <AlertOctagon className="w-6 h-6 text-red-600" />
+            </div>
+            <div>
+              <p className="font-bold text-red-800">Contrato Vencido!</p>
+              <p className="text-sm text-red-600">Este contrato expirou em {formatDate(contrato?.dataSaida)}.</p>
             </div>
           </div>
+          <button onClick={() => setShowModalRenovar(true)} className="bg-red-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-700 transition-colors shadow-sm">
+            Renovar Agora
+          </button>
         </div>
       )}
 
-      {/* Card principal do inquilino */}
-      <Card className={`border-0 shadow-md rounded-2xl overflow-hidden ${contratoVencido ? "ring-2 ring-red-200" : ""}`}>
-        <div className="h-2" style={{ background: contratoVencido ? "oklch(0.60 0.22 25)" : "oklch(0.50 0.22 255)" }} />
-        <CardHeader className="pb-2 pt-5 px-6">
-          <div className="flex items-start justify-between flex-wrap gap-3">
+      {vencendoBreve && !contratoVencido && (
+        <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+              <Calendar className="w-6 h-6 text-amber-600" />
+            </div>
             <div>
-              <CardTitle className="text-xl font-bold text-foreground">{contrato.nomeInquilino}</CardTitle>
-              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                <span className="text-sm bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full font-semibold">
-                  Casa {contrato.casa}
-                </span>
-                {contratoVencido ? (
-                  <span className="text-sm bg-red-100 text-red-700 border border-red-300 px-2.5 py-0.5 rounded-full font-bold">
-                    ⚠ Contrato Vencido
-                  </span>
-                ) : (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <StatusBadge status={contrato.status} size="md" />
-                    {contrato.status !== "ex-inquilino" && (
-                      <button
-                        onClick={() => updateStatusMutation.mutate({
-                          id,
-                          status: contrato.status === "ativo" ? "encerrado" : "ativo"
-                        })}
-                        disabled={updateStatusMutation.isPending}
-                        className="text-xs px-2.5 py-0.5 rounded-full font-semibold transition-all disabled:opacity-50 hover:opacity-90"
-                        style={{
-                          background: contrato.status === "ativo" ? "oklch(0.65 0.20 25)" : "oklch(0.70 0.15 120)",
-                          color: "white"
-                        }}
-                        title={contrato.status === "ativo" ? "Desativar inquilino" : "Ativar inquilino"}
-                      >
-                        {updateStatusMutation.isPending ? "..." : (contrato.status === "ativo" ? "Desativar" : "Ativar")}
-                      </button>
-                    )}
-                    {contrato.status !== "ex-inquilino" && (
-                      <button
-                        onClick={() => updateStatusMutation.mutate({
-                          id,
-                          status: "ex-inquilino"
-                        })}
-                        disabled={updateStatusMutation.isPending}
-                        className="text-xs px-2.5 py-0.5 rounded-full font-semibold transition-all disabled:opacity-50 hover:opacity-90 bg-slate-500 text-white"
-                        title="Marcar como ex-inquilino (nao renovacao)"
-                      >
-                        {updateStatusMutation.isPending ? "..." : "Ex-Inquilino"}
-                      </button>
-                    )}
-                  </div>
-                )}
-                {!contratoVencido && (
-                  <button
-                    onClick={openEditModal}
-                    className="text-xs bg-white border border-border text-muted-foreground px-2 py-0.5 rounded-full font-semibold hover:bg-muted/50 transition-colors"
-                  >
-                    Editar
-                  </button>
-                )}
-                {vencendoBreve && !contratoVencido && (
-                  <span className="text-sm bg-amber-100 text-amber-700 px-2.5 py-0.5 rounded-full font-bold animate-pulse">
-                    ⚠ Vence em {diasParaVencer} dia(s)
-                  </span>
-                )}
+              <p className="font-bold text-amber-800">Contrato Vencendo em Breve</p>
+              <p className="text-sm text-amber-600">Faltam {diasParaVencer} dias para o vencimento ({formatDate(contrato?.dataSaida)}).</p>
+            </div>
+          </div>
+          <button onClick={() => setShowModalRenovar(true)} className="bg-amber-500 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-amber-600 transition-colors shadow-sm">
+            Renovar Contrato
+          </button>
+        </div>
+      )}
+
+      {/* Grid Principal */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* Coluna de Informações (2/3) */}
+        <div className="lg:col-span-2 space-y-5">
+          <Card className="border-border shadow-sm rounded-2xl overflow-hidden">
+            <div className="h-2 bg-primary" />
+            <CardHeader className="pb-2">
+              <div className="flex justify-between items-start">
+                <CardTitle className="text-2xl font-bold text-foreground">
+                  {contrato?.nomeInquilino || "Inquilino"}
+                </CardTitle>
+                <StatusBadge status={contrato?.status || "ativo"} />
               </div>
-            </div>
-            <div className="text-right">
-              <p className="text-2xl font-bold text-primary">{formatBRL(contrato.aluguel)}</p>
-              <p className="text-xs text-muted-foreground">por mês • Dia {contrato.diaPagamento ?? "—"}</p>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="px-6 pb-6">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2">
-            <InfoItem icon={<Building2 className="w-4 h-4" />} label="Endereço" value={propriedade?.nome ?? "—"} />
-            <InfoItem icon={<Building2 className="w-4 h-4" />} label="Casa" value={contrato.casa} />
-            <InfoItem icon={<Calendar className="w-4 h-4" />} label="Data de Entrada" value={formatDate(contrato.dataEntrada)} />
-            <InfoItem
-              icon={<Calendar className="w-4 h-4" />}
-              label="Data de Saída"
-              value={formatDate(contrato.dataSaida)}
-              highlight={vencendoBreve || contratoVencido}
-              highlightColor={contratoVencido ? "red" : "amber"}
-            />
-            <InfoItem icon={<DollarSign className="w-4 h-4" />} label="Aluguel Mensal" value={formatBRL(contrato.aluguel)} />
-            <InfoItem icon={<DollarSign className="w-4 h-4" />} label="Caução" value={formatBRL(contrato.caucao)} />
-            <InfoItem icon={<Calendar className="w-4 h-4" />} label="Dia do Pagamento" value={contrato.diaPagamento ? `Todo dia ${contrato.diaPagamento}` : "—"} />
-            <InfoItem
-              icon={<FileText className="w-4 h-4" />}
-              label="Situação"
-              value={contratoVencido ? "⚠ Contrato Vencido" : contrato.status === "ativo" ? "✅ Ativo" : contrato.status}
-              highlight={contratoVencido}
-              highlightColor="red"
-            />
-          </div>
-          {contrato.observacoes && (
-            <div className="mt-4 bg-muted/50 rounded-xl p-3">
-              <p className="text-xs text-muted-foreground font-semibold mb-1">Observações</p>
-              <p className="text-sm text-foreground">{contrato.observacoes}</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              <div className="flex items-center gap-2 text-muted-foreground mt-1">
+                <Building2 className="w-4 h-4" />
+                <span>{propriedade?.nome || "Propriedade"} — Casa {contrato?.casa || "—"}</span>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4">
+                <div className="p-3 rounded-2xl bg-muted/50 border border-border">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Aluguel</p>
+                  <p className="text-lg font-bold text-foreground">{formatBRL(contrato?.aluguel)}</p>
+                </div>
+                <div className="p-3 rounded-2xl bg-muted/50 border border-border">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Caução</p>
+                  <p className="text-lg font-bold text-foreground">{formatBRL(contrato?.caucao)}</p>
+                </div>
+                <div className="p-3 rounded-2xl bg-muted/50 border border-border">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Dia Venc.</p>
+                  <p className="text-lg font-bold text-foreground">{contrato?.diaPagamento || "—"}</p>
+                </div>
+                <div className="p-3 rounded-2xl bg-muted/50 border border-border">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Entrada</p>
+                  <p className="text-sm font-bold text-foreground">{formatDate(contrato?.dataEntrada)}</p>
+                </div>
+              </div>
 
-      {/* Histórico de pagamentos */}
-      <Card className="border border-border shadow-sm rounded-2xl">
-        <CardHeader className="pb-2 pt-4 px-5">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-primary" />
-              Histórico de Pagamentos
-            </CardTitle>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" /> Pago</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-gray-300 inline-block" /> Pendente</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" /> Atrasado</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" /> Caução</span>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">Clique em qualquer mês para alterar o status do pagamento</p>
-        </CardHeader>
-        <CardContent className="px-5 pb-5">
-          {Object.keys(pagamentosPorAno).length === 0 ? (
-            <p className="text-muted-foreground text-sm text-center py-6">Nenhum pagamento registrado</p>
-          ) : (
-            Object.entries(pagamentosPorAno)
-              .sort(([a], [b]) => Number(b) - Number(a))
-              .map(([anoStr, mesesPag]) => {
-                const isExpanded = expandedYears.has(Number(anoStr));
-                const anoNum = Number(anoStr);
+              {contrato?.observacoes && (
+                <div className="mt-6 p-4 rounded-2xl bg-blue-50/50 border border-blue-100">
+                  <p className="text-xs font-bold text-blue-700 uppercase mb-2 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5" /> Observações
+                  </p>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{contrato.observacoes}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Histórico de Pagamentos */}
+          <Card className="border-border shadow-sm rounded-2xl overflow-hidden">
+            <CardHeader className="border-b bg-muted/30">
+              <CardTitle className="text-lg font-bold flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-primary" />
+                Histórico de Pagamentos
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {anosDisponiveis.map((ano) => {
+                const isExpanded = expandedYears.has(ano);
                 return (
-                <div key={anoStr} className="mb-6">
-                  <button
-                    onClick={() => toggleYear(anoNum)}
-                    className="w-full text-left mb-3"
-                  >
-                    <h3 className="text-sm font-bold text-foreground flex items-center gap-2 hover:opacity-80 transition-opacity">
-                      <span className={`inline-block transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
-                      <span className="bg-primary text-primary-foreground px-3 py-0.5 rounded-full text-xs">{anoStr}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {Object.values(mesesPag).filter((p) => p.status === "pago").length} pagos •{" "}
-                        {Object.values(mesesPag).filter((p) => p.status === "atrasado").length} atrasados •{" "}
-                        {Object.values(mesesPag).filter((p) => p.status === "pendente").length} pendentes
-                      </span>
-                    </h3>
-                  </button>
-                  {isExpanded && (
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-                    {MESES.map((mesNome, idx) => {
-                      const pag = mesesPag[idx + 1];
-                      const pagamento = pag || {
-                        id: 0,
-                        contratoId: id,
-                        ano: Number(anoStr),
-                        mes: idx + 1,
-                        status: 'pendente' as const,
-                        valorPago: null,
-                        dataPagamento: null,
-                        observacao: null,
-                        createdAt: new Date(),
-                        updatedAt: new Date(),
-                      };
-                      return (
-                        <div key={idx} className="rounded-xl overflow-visible">
-                          <div className="bg-muted/20 rounded-xl p-2 text-center mb-1">
-                            <p className="text-xs font-bold text-foreground">{mesNome}</p>
-                            {pagamento.valorPago && (
-                              <p className="text-xs text-muted-foreground">
-                                {formatBRL(pagamento.valorPago)}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex justify-center">
-                            <PagamentoStatusSelector
-                              contratoId={id}
-                              ano={Number(anoStr)}
-                              mes={idx + 1}
-                              mesNome={mesNome}
-                              statusAtual={pagamento.status as "pago" | "pendente" | "atrasado" | "caucao"}
-                              valorAluguel={contrato.aluguel}
-                              onSave={(params) => upsertPagamento.mutate(params)}
-                              saving={upsertPagamento.isPending}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  )}
-                </div>
-              );
-              })
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Botões de Ação */}
-      <div className="flex justify-end gap-3 flex-wrap">
-        <Link href={`/whatsapp?contratoId=${id}`} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white shadow-md transition-opacity hover:opacity-90" style={{ background: "oklch(0.55 0.20 145)" }}>
-            <MessageCircle className="w-4 h-4" />
-            Enviar WhatsApp
-        </Link>
-        <Link href={`/recibo?contratoId=${id}`} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white shadow-md transition-opacity hover:opacity-90" style={{ background: "oklch(0.50 0.22 255)" }}>
-            <Receipt className="w-4 h-4" />
-            Gerar Recibo de Pagamento
-        </Link>
-      </div>
-
-      {/* Upload de arquivos */}
-      <Card className="border border-border shadow-sm rounded-2xl">
-        <CardHeader className="pb-2 pt-4 px-5">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
-              <FileText className="w-4 h-4 text-primary" />
-              Arquivos do Contrato
-            </CardTitle>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadMutation.isPending}
-              className="flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              {uploadMutation.isPending ? "Enviando..." : "Enviar Arquivo"}
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-              className="hidden"
-              onChange={handleFileUpload}
-            />
-          </div>
-        </CardHeader>
-        <CardContent className="px-5 pb-5">
-          {!arquivos || arquivos.length === 0 ? (
-            <div
-              className="border-2 border-dashed border-border rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground font-medium">Clique para enviar o contrato em PDF</p>
-              <p className="text-xs text-muted-foreground/60 mt-1">PDF, DOC, DOCX, JPG, PNG — máx 10MB</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {arquivos.map((arq) => (
-                <div key={arq.id} className="flex items-center gap-3 bg-muted/40 rounded-xl px-3 py-2.5">
-                  <FileText className="w-5 h-5 text-primary flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-foreground truncate">{arq.nomeArquivo}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {arq.tamanho ? `${(arq.tamanho / 1024).toFixed(0)} KB` : ""} •{" "}
-                      {new Date(arq.createdAt).toLocaleDateString("pt-BR")}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <a
-                      href={arq.urlArquivo}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-1.5 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors"
-                      title="Baixar arquivo"
-                    >
-                      <Download className="w-4 h-4" />
-                    </a>
-                    <button
-                      onClick={() => deleteMutation.mutate({ id: arq.id })}
-                      className="p-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
-                      title="Remover arquivo"
-                    >
-                      <Trash2 className="w-4 h-4" />
+                  <div key={ano} className="border-b last:border-0">
+                    <button onClick={() => toggleYear(ano)} className="w-full flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
+                      <span className="font-bold text-foreground">{ano}</span>
+                      <ChevronRight className={`w-5 h-5 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`} />
                     </button>
+                    {isExpanded && (
+                      <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {MESES.map((nome, idx) => {
+                          const mesNum = idx + 1;
+                          const pag = pagamentosPorAno[ano]?.[mesNum];
+                          return (
+                            <div key={mesNum} className="flex items-center justify-between p-2.5 rounded-xl border border-border bg-white shadow-sm">
+                              <span className="text-xs font-bold text-muted-foreground">{nome}</span>
+                              <PagamentoStatusSelector
+                                status={pag?.status || "pendente"}
+                                onChange={(newStatus) => upsertPagamento.mutate({ contratoId: id, ano, mes: mesNum, status: newStatus })}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Coluna Lateral (1/3) */}
+        <div className="space-y-5">
+          {/* Contato WhatsApp */}
+          <Card className="border-border shadow-sm rounded-2xl overflow-hidden bg-green-50/50 border-green-100">
+            <CardContent className="p-5">
+              <p className="text-xs font-bold text-green-700 uppercase mb-3 flex items-center gap-1.5">
+                <MessageCircle className="w-4 h-4" /> Contato WhatsApp
+              </p>
+              <div className="flex flex-col gap-3">
+                <div className="text-sm">
+                  <p className="text-muted-foreground text-xs">Telefone:</p>
+                  <p className="font-bold text-foreground">{contrato?.telefone || "Não informado"}</p>
                 </div>
-              ))}
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full py-2 rounded-xl border-2 border-dashed border-border text-sm text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors"
-              >
-                + Adicionar outro arquivo
+                <Link href={`/whatsapp?contratoId=${id}`}>
+                  <a className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-4 rounded-xl transition-colors flex items-center justify-center gap-2 text-sm shadow-sm">
+                    <MessageCircle className="w-4 h-4" />
+                    Enviar Mensagem
+                  </a>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Documentos/Arquivos */}
+          <Card className="border-border shadow-sm rounded-2xl overflow-hidden">
+            <CardHeader className="pb-2 flex flex-row items-center justify-between">
+              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                <FileText className="w-4 h-4 text-primary" />
+                Documentos
+              </CardTitle>
+              <button onClick={() => fileInputRef.current?.click()} className="p-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+                <Upload className="w-4 h-4" />
               </button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept=".pdf,.jpg,.jpeg,.png" />
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {arquivos.length === 0 ? (
+                <div className="text-center py-6 text-xs text-muted-foreground bg-muted/30 rounded-xl border border-dashed">
+                  Nenhum arquivo enviado
+                </div>
+              ) : (
+                arquivos.map((arq) => (
+                  <div key={arq.id} className="flex items-center justify-between p-2.5 rounded-xl border bg-white group">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                      <span className="text-xs font-medium truncate">{arq.nomeOriginal}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <a href={arq.url} target="_blank" rel="noreferrer" className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground">
+                        <Download className="w-3.5 h-3.5" />
+                      </a>
+                      <button onClick={() => confirm("Remover este arquivo?") && deleteMutation.mutate({ id: arq.id })} className="p-1.5 rounded-lg hover:bg-red-50 text-muted-foreground hover:text-red-500">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
 
-function InfoItem({
-  icon, label, value, highlight, highlightColor = "amber"
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  highlight?: boolean;
-  highlightColor?: "amber" | "red";
-}) {
-  const colors = {
-    amber: { bg: "bg-amber-50 border border-amber-200", icon: "text-amber-600", text: "text-amber-700" },
-    red:   { bg: "bg-red-50 border border-red-200",     icon: "text-red-600",   text: "text-red-700" },
-  };
-  const c = colors[highlightColor];
+function ChevronRight({ className, ...props }: any) {
   return (
-    <div className={`rounded-xl p-3 ${highlight ? c.bg : "bg-muted/40"}`}>
-      <div className={`flex items-center gap-1.5 mb-1 ${highlight ? c.icon : "text-muted-foreground"}`}>
-        {icon}
-        <span className="text-xs font-semibold">{label}</span>
-      </div>
-      <p className={`text-sm font-bold ${highlight ? c.text : "text-foreground"}`}>{value}</p>
-    </div>
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="m9 18 6-6-6-6"/>
+    </svg>
   );
 }
